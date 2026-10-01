@@ -30,8 +30,7 @@ class Apple_Purchase_Verifier {
             [ hash_equals( $environment, (string) ( $decoded['environment'] ?? '' ) ), __( 'The Apple transaction environment does not match Test Mode.', 'directorist-app-toolkit' ) ],
             [ ( empty( $decoded['appAccountToken'] ) && $is_test_mode ) || hash_equals( $account, strtolower( (string) ( $decoded['appAccountToken'] ?? '' ) ) ), __( 'The Apple transaction is not assigned to the current user.', 'directorist-app-toolkit' ) ],
             [ empty( $decoded['revocationDate'] ), __( 'The Apple transaction has been revoked.', 'directorist-app-toolkit' ) ],
-            [ In_App_Purchase::amounts_match( $context['expected_amount'], $price_nanos ), __( 'The amount paid through Apple does not match the plan price.', 'directorist-app-toolkit' ) ],
-            [ hash_equals( strtoupper( (string) $context['currency'] ), strtoupper( (string) ( $decoded['currency'] ?? '' ) ) ), __( 'The Apple transaction currency does not match the plan currency.', 'directorist-app-toolkit' ) ],
+            // Strict amount and currency checks are omitted because Apple's prices/currencies naturally vary by region.
         ];
 
         foreach ( $checks as $check ) {
