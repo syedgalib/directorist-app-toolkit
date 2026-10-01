@@ -12,22 +12,23 @@ class Apple_Purchase_Verifier {
             return new \WP_Error( 'directorist_app_iap_apple_proof_required', __( 'signed_transaction_info is required for an Apple purchase.', 'directorist-app-toolkit' ), [ 'status' => 400 ] );
         }
 
-        $decoded = $this->decode_and_verify( $jws );
+        $is_test_mode = ! empty( App_Settings::get_setting( 'app_iap_apple_test_mode', false ) );
+        $decoded      = $this->decode_and_verify( $jws, $is_test_mode );
 
         if ( is_wp_error( $decoded ) ) {
             return $decoded;
         }
 
         $bundle_id   = (string) App_Settings::get_setting( 'app_iap_apple_bundle_id', '' );
-        $environment = ! empty( App_Settings::get_setting( 'app_iap_apple_test_mode', false ) ) ? 'Sandbox' : 'Production';
+        $environment = $is_test_mode ? 'Xcode' : 'Production';
         $account     = In_App_Purchase::get_account_token( $user_id );
         $price_nanos = isset( $decoded['price'] ) ? (int) $decoded['price'] * 1000000 : -1;
 
         $checks = [
-            [ ! empty( $bundle_id ) && hash_equals( $bundle_id, (string) ( $decoded['bundleId'] ?? '' ) ), __( 'The Apple transaction bundle ID does not match this app.', 'directorist-app-toolkit' ) ],
+            [ ( empty( $bundle_id ) && $is_test_mode ) || hash_equals( $bundle_id, (string) ( $decoded['bundleId'] ?? '' ) ), __( 'The Apple transaction bundle ID does not match this app.', 'directorist-app-toolkit' ) ],
             [ hash_equals( (string) $context['product_id'], (string) ( $decoded['productId'] ?? '' ) ), __( 'The Apple transaction product does not match this plan.', 'directorist-app-toolkit' ) ],
             [ hash_equals( $environment, (string) ( $decoded['environment'] ?? '' ) ), __( 'The Apple transaction environment does not match Test Mode.', 'directorist-app-toolkit' ) ],
-            [ hash_equals( $account, strtolower( (string) ( $decoded['appAccountToken'] ?? '' ) ) ), __( 'The Apple transaction is not assigned to the current user.', 'directorist-app-toolkit' ) ],
+            [ ( empty( $decoded['appAccountToken'] ) && $is_test_mode ) || hash_equals( $account, strtolower( (string) ( $decoded['appAccountToken'] ?? '' ) ) ), __( 'The Apple transaction is not assigned to the current user.', 'directorist-app-toolkit' ) ],
             [ empty( $decoded['revocationDate'] ), __( 'The Apple transaction has been revoked.', 'directorist-app-toolkit' ) ],
             [ In_App_Purchase::amounts_match( $context['expected_amount'], $price_nanos ), __( 'The amount paid through Apple does not match the plan price.', 'directorist-app-toolkit' ) ],
             [ hash_equals( strtoupper( (string) $context['currency'] ), strtoupper( (string) ( $decoded['currency'] ?? '' ) ) ), __( 'The Apple transaction currency does not match the plan currency.', 'directorist-app-toolkit' ) ],
@@ -52,7 +53,7 @@ class Apple_Purchase_Verifier {
         ];
     }
 
-    private function decode_and_verify( $jws ) {
+    private function decode_and_verify( $jws, $is_test_mode = false ) {
         $parts = explode( '.', $jws );
 
         if ( 3 !== count( $parts ) ) {
@@ -70,6 +71,27 @@ class Apple_Purchase_Verifier {
         $certificates = [];
         foreach ( $header['x5c'] as $certificate ) {
             $certificates[] = "-----BEGIN CERTIFICATE-----\n" . chunk_split( preg_replace( '/\s+/', '', (string) $certificate ), 64, "\n" ) . "-----END CERTIFICATE-----\n";
+        }
+
+        $is_xcode = ( 'Apple_Xcode_Key' === ( $header['kid'] ?? '' ) );
+
+        if ( $is_xcode ) {
+            if ( ! $is_test_mode ) {
+                return $this->error( __( 'Xcode test transactions are not allowed in Production mode.', 'directorist-app-toolkit' ) );
+            }
+
+            if ( empty( $certificates ) ) {
+                return $this->error( __( 'The Xcode signing certificate is missing.', 'directorist-app-toolkit' ) );
+            }
+
+            $leaf_key = openssl_pkey_get_public( $certificates[0] );
+            $der_sig  = $this->ecdsa_raw_to_der( $signature );
+
+            if ( ! $leaf_key || ! $der_sig || 1 !== openssl_verify( $parts[0] . '.' . $parts[1], $der_sig, $leaf_key, OPENSSL_ALGO_SHA256 ) ) {
+                return $this->error( __( 'The Apple transaction signature is invalid.', 'directorist-app-toolkit' ) );
+            }
+
+            return $payload;
         }
 
         if ( 3 !== count( $certificates ) ) {

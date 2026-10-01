@@ -360,7 +360,7 @@ class App_Settings {
                         'label'       => __( 'Test Mode', 'directorist-app-toolkit' ),
                         'type'        => 'checkbox',
                         'default'     => false,
-                        'description' => __( 'Accept StoreKit Sandbox transactions. Disable this on production sites.', 'directorist-app-toolkit' ),
+                        'description' => __( 'Accept StoreKit Xcode test transactions. Disable this on production sites.', 'directorist-app-toolkit' ),
                     ],
                     'app_iap_apple_bundle_id' => [
                         'label'       => __( 'Bundle ID', 'directorist-app-toolkit' ),
