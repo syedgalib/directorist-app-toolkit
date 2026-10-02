@@ -39,13 +39,18 @@ class Apple_Purchase_Verifier {
             }
         }
 
-        if ( empty( $decoded['transactionId'] ) ) {
-            return new \WP_Error( 'directorist_app_iap_apple_transaction_missing', __( 'The Apple transaction ID is missing.', 'directorist-app-toolkit' ), [ 'status' => 422 ] );
+        error_log( "IAP DEBUG PAYLOAD: " . print_r($decoded, true) );
+        $transaction_id = isset( $decoded['transactionId'] ) ? trim( (string) $decoded['transactionId'] ) : '';
+
+        if ( $is_test_mode ) {
+            $transaction_id = 'apple_xcode_id_' . time() . '_' . wp_rand( 1000, 9999 );
+        } elseif ( '' === $transaction_id ) {
+            return new \WP_Error( 'directorist_app_iap_apple_transaction_missing', __( 'The Apple transaction ID is missing. Keys: ' . implode(",", array_keys($decoded)) . ',', 'directorist-app-toolkit' ), [ 'status' => 422 ] );
         }
 
         return [
             'platform'       => 'apple',
-            'transaction_id' => (string) $decoded['transactionId'],
+            'transaction_id' => $transaction_id,
             'amount'         => (string) $context['expected_amount'],
             'currency'       => strtoupper( (string) $decoded['currency'] ),
             'environment'    => $environment,
